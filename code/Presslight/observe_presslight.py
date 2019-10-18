@@ -135,6 +135,6 @@ def update_travel_time(dic_travel = dict()):
         if vehicle not in dic_travel:
             dic_travel[vehicle] = [0,0,0]
             dic_travel[vehicle][0] = traci.simulation.getCurrentTime()
-        dic_travel[vehicle][1] = traci.simulation.getCurrentTime()
+        dic_travel[vehicle][1] = traci.simulation.getCurrentTime()-dic_travel[vehicle][0]
         dic_travel[vehicle][2] = traci.vehicle.getAccumulatedWaitingTime(vehicle)
     return dic_travel
