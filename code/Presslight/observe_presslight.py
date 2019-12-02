@@ -1,6 +1,9 @@
 #这里定义所有用于获取状态的函数
 import traci
 import numpy as np
+#import sklearn.preprocessing as skp
+
+#enc = skp.OneHotEncoder()
 
 def cal_reward(state,state_n):
     '''
@@ -76,9 +79,8 @@ def get_edges(TrafficLightID):
                 outgoing_edge.append(traci.lane.getEdgeID(traci.trafficlight.getControlledLinks(TrafficLightID)[link][0][1]))
         #排序并消去重复元素
         #
-        incoming_edge = list(set(incoming_edge))
-        
-        outgoing_edge = list(set(outgoing_edge))
+        incoming_edge = list(sorted(set(incoming_edge)))
+        outgoing_edge = list(sorted(set(outgoing_edge)))
         edge_list = incoming_edge + outgoing_edge
     else:
         print('please enter the correct intersection id')
@@ -118,13 +120,17 @@ def get_lane_seg_number(dic_distribution,n_parts):
     else:print('error')
     return number_seg#ranked from 1 to n.
 
-def get_all_waitingtime(TrafficLightID):
+def get_all_waiting(TrafficLightID):
     '''
-        return total waiting time of the given intersection.
+        return the waiting time at the given intersection
     '''
-    edges = get_edges(TrafficLightID)[1]
-    waiting_time_edge = [traci.edge.getWaitingTime(edge) for edge in edges]
-    return sum(waiting_time_edge), waiting_time_edge
+    EdgeList = get_edges(TrafficLightID)[0]
+    #print(EdgeList)
+    waiting_time = []
+    for item in EdgeList:
+        #print(traci.edge.getWaitingTime(item))
+        waiting_time.append(traci.edge.getWaitingTime(item))
+    return sum(waiting_time),waiting_time
 
 def update_travel_time(dic_travel = dict()):
     '''
@@ -138,3 +144,60 @@ def update_travel_time(dic_travel = dict()):
         dic_travel[vehicle][1] = traci.simulation.getCurrentTime()-dic_travel[vehicle][0]
         dic_travel[vehicle][2] = traci.vehicle.getAccumulatedWaitingTime(vehicle)
     return dic_travel
+    
+def get_neighbor(TrafficLightID):
+    '''
+        return a dictionary consisting of neighbors id and the direction vector
+    '''
+    Position = traci.junction.getPosition(TrafficLightID)
+    ALL_TL = traci.trafficlight.getIDList()
+    Neighbor = dict()
+    for id in ALL_TL:
+        P1 = traci.junction.getPosition(id)
+        vec = (np.asarray(P1)-np.asarray(Position))/200
+        if np.linalg.norm(vec) == 1:
+            Neighbor[id] = vec
+    return Neighbor
+
+def get_lane(TrafficLightID):
+    '''
+        Return a list of lanes for given traffic light ID
+        [NS,EW,SN,WE] or [up,right,down,left]
+    '''
+    EdgeList = get_edges(TrafficLightID)[1]
+    All_lanes = list(traci.lane.getIDList())
+    LaneList_r = []
+    LaneList = [0,0,0,0]
+    for lane in All_lanes:
+        if traci.lane.getEdgeID(lane) in EdgeList:
+            LaneList_r.append(lane)
+    for lane in LaneList_r:
+        dire = np.asarray(traci.lane.getShape(lane)[0])-np.asarray(traci.lane.getShape(lane)[1])
+        dire[dire<0]=-1
+        dire[dire>0] = 1
+        dire = list(dire)
+        INDEX = np.int(dire.index(0)*1+1-dire[1-dire.index(0)])
+        LaneList[INDEX] = lane
+    return LaneList
+
+
+def get_map_matrix(TrafficLightID):
+    LaneList = get_lane(TrafficLightID)
+    print(LaneList)
+    VeID = traci.vehicle.getIDList()
+    if LaneList:
+        Num_Lanes = len(LaneList)
+        Length_Lanes = np.int(np.ceil(np.max([traci.lane.getLength(LaneList[i]) for i in range(Num_Lanes)])))
+        Block_lengths = 3
+        Vmax = traci.lane.getMaxSpeed(LaneList[0])
+        Map = np.zeros((Num_Lanes,Length_Lanes//Block_lengths+1,2))
+        for vehicle in VeID:
+            if traci.vehicle.getLaneID(vehicle) in LaneList:
+                Index = LaneList.index(traci.vehicle.getLaneID(vehicle))
+                Lane_Pos = np.int(traci.vehicle.getLanePosition(vehicle)//Block_lengths)
+                Map[Index,Lane_Pos,0] = 1
+                Map[Index,Lane_Pos,1] = traci.vehicle.getSpeed(vehicle)/Vmax
+    return Map
+
+
+
